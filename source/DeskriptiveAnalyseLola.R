@@ -3,6 +3,69 @@ Daten <- read.csv("bank-additional-full.csv", header=TRUE, sep=";", fill=TRUE, s
 
 table(Daten$month)
 
+library(dplyr)
+
+Daten %>%
+  summarise(across(c(contact, pdays, poutcome), list(
+    na = ~ sum(is.na(.)),
+    empty = ~ sum(. == "" | . == " ", na.rm = TRUE),
+    unknown = ~ sum(tolower(.) == "unknown", na.rm = TRUE)
+  )))
+
+missing_counts <- colSums(is.na(Daten[, c("contact", "pdays", "poutcome")]))
+print(missing_counts)
+
+# Einzeln für die Spalten
+table(Daten$contact)
+table(Daten$poutcome)
+library(dplyr)
+
+levels(Daten$contact)
+levels(Daten$poutcome)
+
+Daten %>%
+  summarise(across(c(contact, pdays, poutcome), ~ sum(is.na(.))))
+
+table(Daten$Pdays)
+# Oder gezielt nach der -1 suchen:
+sum(Daten$Pdays == -1, na.rm = TRUE)
+
+table(Daten$day_of_week)
+
+# 1. Check für die kategorischen Spalten (contact, poutcome)
+table(Daten$contact)
+table(Daten$poutcome)
+
+# 2. Check für die numerische Spalte pdays
+# In diesem Datensatz bedeutet 999, dass der Kunde vorher nie kontaktiert wurde
+sum(Daten$pdays == 999)
+
+
+
+# 1. Zielvariable y in 0 und 1 umwandeln
+Daten$y_num <- ifelse(Daten$y == "yes", 1, 0)
+
+# 2. poutcome in Zahlen umwandeln (z.B. failure=1, nonexistent=2, success=3)
+# R macht das bei Factors automatisch mit as.numeric()
+Daten$poutcome_num <- as.numeric(Daten$poutcome)
+
+# 3. Kovarianz berechnen
+cov(Daten$poutcome_num, Daten$y_num, use = "complete.obs")
+
+library(dplyr)
+library(ggplot2)
+
+Daten %>%
+  group_by(poutcome) %>%
+  summarise(Erfolgsrate = mean(y == "yes")) %>%
+  ggplot(aes(x = poutcome, y = Erfolgsrate)) +
+  geom_col(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Einfluss von Poutcome auf den Erfolg")
+
+
+
+
 summary(Daten)
 # Erstellt eine Punktewolke für eine einzelne Variable
 stripchart(Daten$age, 
@@ -117,3 +180,27 @@ ggplot(Daten, aes(x = job, fill = marital)) +
   # Die X-Achse (die jetzt unten ist) in Prozent formatieren
   scale_y_continuous(labels = scales::percent) + 
   theme_minimal()
+
+# Alle Boxplots
+
+
+# Wochentage in die richtige Reihenfolge bringen
+Daten$day_of_week <- factor(Daten$day_of_week, 
+                            levels = c("mon", "tue", "wed", "thu", "fri"))
+
+library(ggplot2)
+
+
+# Erfolg nach Kontaktart
+ggplot(Daten, aes(x = contact, fill = y)) +
+  geom_bar(position = "fill") + # "fill" zeigt den Anteil (Prozent)
+  labs(y = "Anteil", title = "Erfolgsrate nach Kontaktart")
+
+
+# Boxplot: Erfolg vs. Gesprächsdauer
+ggplot(Daten, aes(x = y, y = duration, fill = y)) +
+  geom_boxplot() +
+  scale_y_log10() + # Log-Skala, da duration oft extreme Ausreißer hat
+  labs(title = "Gesprächsdauer bei Erfolg vs. Misserfolg")
+
+summary(Daten)
