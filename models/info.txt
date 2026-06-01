@@ -1,1 +1,0 @@
-Ordner für das Abspeichern der trainierten Modelle
