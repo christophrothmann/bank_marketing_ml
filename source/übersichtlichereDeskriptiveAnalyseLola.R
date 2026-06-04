@@ -811,3 +811,15 @@ ggplot(schulden_daten, aes(x = reorder(job, balance, FUN = median), y = balance)
        subtitle = "Fokus auf den Bereich bis -2.000 € (Boxen gestreckt für bessere Lesbarkeit)",
        x = "Berufsgruppe",
        y = "Kontostand (Schulden) in €")
+
+
+# Days und Zusammenhang mit y
+# Check: Hat der Kalendertag einen Einfluss auf den Erfolg?
+modell_day <- glm(y_num ~ day, data = Daten, family = "binomial")
+summary(modell_day)
+
+
+# Abschlussquote in % pro Kalendertag berechnen
+tag_check <- aggregate(y_num ~ day, data = Daten, FUN = mean)
+tag_check$y_num <- round(tag_check$y_num * 100, 2)
+print(tag_check)
