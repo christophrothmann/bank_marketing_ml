@@ -4,6 +4,12 @@ Daten <- read.csv("bank-full.csv", header=TRUE, sep=";", fill=TRUE, stringsAsFac
 summary(Daten)
 
 
+# Duration aus Datensatz kicken
+Daten$duration <- NULL
+Daten$duration_min <- NULL
+names(Daten)
+
+
 ## Day Analyse
 Daten$day <- factor(Daten$day, levels = 1:31)
 table(Daten$day)
@@ -559,3 +565,249 @@ ggplot(Daten, aes(x = month, fill = poutcome)) +
        x = "Monat",
        y = "Anteil der Kontaktarten in %",
        fill = "Letztes Kampagnenergebnis")
+
+
+
+
+
+# Genauerer Check wg. Monat
+# Einmalig installieren, falls noch nicht passiert: 
+# install.packages("DescTools")
+library(DescTools)
+
+# Wir berechnen Cramérs V für Monat und Abschluss (y)
+einfluss_monat <- CramerV(Daten$month, Daten$y)
+
+print(paste("Die Stärke des Einflusses (Cramérs V) liegt bei:", round(einfluss_monat, 3)))
+
+
+# Wir bauen ein schnelles Basis-Modell, das y vorhersagen soll
+# y_num ist deine numerische Zielvariable (0 für no, 1 für yes)
+basis_modell <- glm(y_num ~ month + poutcome, data = Daten, family = "binomial")
+
+# Wir schauen uns die Zusammenfassung an
+summary(basis_modell)
+
+
+# Alter und previous
+korrelation <- cor.test(Daten$age, Daten$previous, method = "spearman")
+print(korrelation)
+
+library(ggplot2)
+
+ggplot(Daten, aes(x = age, y = previous)) +
+  # alpha = 0.3 macht die Punkte leicht durchsichtig, so sehen wir, wo sie sich ballen
+  geom_jitter(alpha = 0.3, color = "steelblue", width = 0.2, height = 0.2) +
+  # Die magische rote Trendlinie
+  geom_smooth(method = "lm", color = "red", se = FALSE) + 
+  theme_minimal() +
+  coord_cartesian(ylim = c(0, 50)) + # Optischer Zoom
+  labs(title = "Hypothesen-Check: Werden Senioren häufiger kontaktiert?",
+       subtitle = "Wenn die These stimmt, muss die rote Linie deutlich nach oben zeigen",
+       x = "Alter der Kunden",
+       y = "Bisherige Kontakte (previous)")
+
+# Welche Altersgruppe wird kontaktiert? 
+Daten$altersgruppe <- cut(Daten$age,
+                          breaks = c(17, 30, 50, 70, 120),
+                          labels = c("18-30 (Junge Erwachsene)", 
+                                     "31-50 (Mittelalter)", 
+                                     "51-70 (Ältere Erwachsene)", 
+                                     "71+ (Senioren)"))
+
+# Ein schneller Check in der Konsole: Wer hat den höchsten Durchschnitt an Vor-Kontakten?
+aggregate(previous ~ altersgruppe, data = Daten, FUN = mean)
+
+
+library(ggplot2)
+
+ggplot(Daten, aes(x = altersgruppe, fill = altersgruppe)) +
+  geom_bar(color = "black") +
+  theme_minimal() +
+  # Eine ruhige Farbpalette, sieht sehr professionell aus
+  scale_fill_brewer(palette = "Blues") + 
+  theme(axis.text.x = element_text(angle = 15, hjust = 1)) +
+  labs(title = "Zielgruppen-Check: Wer wird eigentlich angerufen?",
+       subtitle = "Die absolute Masse der Callcenter-Kapazitäten fließt in die mittlere Altersgruppe",
+       x = "Altersgruppe",
+       y = "Absolute Anzahl der Kontaktierten",
+       fill = "Altersgruppe")
+
+
+# Previous und pday Vergleich
+konsistenz_check <- table(Previous_Null = Daten$previous == 0, 
+                          Pdays_MinusEins = Daten$pdays == -1)
+
+# Saubere Ausgabe in der Konsole
+print(konsistenz_check)
+
+
+# Wieso werden Senioren doppelt so oft kontaktiert? 
+tabelle_erfolg <- table(Daten$altersgruppe, Daten$poutcome)
+prozent_erfolg <- prop.table(tabelle_erfolg, margin = 1) * 100
+round(prozent_erfolg, 2)
+
+library(ggplot2)
+
+ggplot(Daten, aes(x = altersgruppe, fill = poutcome)) +
+  geom_bar(position = "fill", color = "black") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal() +
+  # Unsere bekannte Farbpalette von vorhin
+  scale_fill_manual(values = c("success" = "lightgreen", 
+                               "failure" = "lightcoral", 
+                               "unknown" = "gray85", 
+                               "other" = "lightblue")) +
+  theme(axis.text.x = element_text(angle = 15, hjust = 1)) +
+  labs(title = "Historischer Erfolg nach Altersgruppen",
+       subtitle = "Sind Senioren im System, weil sie treue Käufer sind?",
+       x = "Altersgruppe",
+       y = "Anteil der Ergebnisse in %",
+       fill = "Letztes Ergebnis (poutcome)")
+
+table(Daten$altersgruppe)
+
+
+library(DescTools)
+
+# Einfluss der Altersgruppen auf den Erfolg (y)
+cramer_alter <- CramerV(Daten$altersgruppe, Daten$y)
+print(paste("Cramérs V für die Altersgruppen:", round(cramer_alter, 3)))
+
+# Ein schnelles Modell nur mit den Altersgruppen
+modell_alter <- glm(y_num ~ altersgruppe, data = Daten, family = "binomial")
+summary(modell_alter)
+
+
+table(Daten$y_num)
+table(Daten$y)
+
+
+# Noch mal Alter Analyse
+# Wir bauen eine Ja/Nein-Variable für die Kontakthistorie
+Daten$schon_mal_kontaktiert <- ifelse(Daten$previous > 0, "Ja (Bestandskunde)", "Nein (Kaltakquise)")
+
+# Jetzt berechnen wir die echte Abschlussquote fuer jede Kombi
+erfolgsquote_kombi <- aggregate(y_num ~ altersgruppe + schon_mal_kontaktiert, 
+                                data = Daten, 
+                                FUN = mean)
+
+# Ausgabe in Prozent für die Übersicht
+erfolgsquote_kombi$y_num <- round(erfolgsquote_kombi$y_num * 100, 2)
+print(erfolgsquote_kombi)
+
+
+# Das kontrollierte Modell
+modell_kontrolliert <- glm(y_num ~ altersgruppe + previous, data = Daten, family = "binomial")
+summary(modell_kontrolliert)
+
+# 95 Jährige Analyse
+Daten[Daten$age == 95, ]
+# Öffnet die 95-jährigen Kunden in einer eigenen interaktiven Tabelle
+View(Daten[Daten$age == 95, ])
+
+
+# Zählt alle Personen, die älter als 85 Jahre alt sind
+sum(Daten$age > 85)
+# Zeigt dir eine genaue Übersicht aller Altersstufen über 85
+table(Daten$age[Daten$age > 85])
+
+sum(Daten$age > 95)
+
+
+Daten[Daten$age >= 85, ]
+# Öffnet die 95-jährigen Kunden in einer eigenen interaktiven Tabelle
+View(Daten[Daten$age >= 85, ])
+
+
+# Balance Check 
+table(Daten$balance)
+summary(Daten)
+
+library(ggplot2)
+
+ggplot(Daten, aes(x = y, y = balance, fill = y)) +
+  geom_boxplot(outlier.alpha = 0.1) +
+  coord_cartesian(ylim = c(-1000, 10000)) + # Ausreißer-Zoom
+  theme_minimal() +
+  scale_fill_manual(values = c("no" = "lightcoral", "yes" = "lightgreen")) +
+  labs(title = "Budget-Check",
+       x = "Erfolgreicher Abschluss (y)",
+       y = "Kontostand in €")
+
+# Der exakte Einfluss des Kontostands auf die Zielvariable y
+modell_budget <- glm(y_num ~ balance, data = Daten, family = "binomial")
+summary(modell_budget)
+
+# Der exakte Befehl für die Chance-Steigerung pro 1.000 € Guthaben
+exp(coef(modell_budget)["balance"] * 1000)
+
+
+# Den reichsten Kunden unter die Lupe nehmen
+Daten[Daten$balance == max(Daten$balance), c("age", "job", "marital", "education", "balance")]
+
+# Sortiert den Datensatz nach Kontostand aufsteigend und zeigt die ersten 5 Zeilen
+head(Daten[order(Daten$balance), c("age", "job", "marital", "balance")], 5)
+
+
+# Der typische Kontostand pro Job-Gruppe
+aggregate(balance ~ job, data = Daten, FUN = median)
+
+
+
+# Berechnet den prozentualen Anteil der Kunden im Minus pro Jobgruppe
+prozent_im_minus <- aggregate(balance < 0 ~ job, data = Daten, FUN = mean)
+prozent_im_minus$balance <- round(prozent_im_minus$balance * 100, 2)
+print(prozent_im_minus)
+
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+
+# Schritt 1: Nur Kunden mit echtem Minus filtern
+schulden_daten <- Daten %>% filter(balance < 0)
+
+# Schritt 2: Das Diagramm zeichnen (nach Median-Schulden sortiert)
+ggplot(schulden_daten, aes(x = reorder(job, balance, FUN = median), y = balance, fill = job)) +
+  geom_boxplot(outlier.color = "lightcoral", outlier.alpha = 0.5) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "none") + # Legende weg, steht ja schon auf der X-Achse
+  labs(title = "Wer rutscht am tiefsten ins Minus?",
+       x = "Berufsgruppe",
+       y = "Kontostand (Schulden) in €")
+
+
+
+# Zeigt die 5 tiefsten Kontominus-Werte inklusive Alter und Job
+head(Daten[order(Daten$balance), c("age", "job", "marital", "balance", "y")], 5)
+
+
+
+
+
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+
+# Nur Kunden mit echtem Minus filtern
+schulden_daten <- Daten %>% filter(balance < 0)
+
+ggplot(schulden_daten, aes(x = reorder(job, balance, FUN = median), y = balance)) +
+  # Wir nehmen eine einheitliche, ruhige Farbe, das beruhigt das Auge enorm
+  geom_boxplot(fill = "steelblue", alpha = 0.7, outlier.color = "darkred", outlier.alpha = 0.4) +
+  # DER GAMECHANGER: Drehen UND Zoom auf den relevanten Bereich (-2000 bis 0)
+  coord_flip(ylim = c(-2000, 0)) + 
+  theme_minimal() +
+  labs(title = "Schulden-Tiefe: Wer steckt am tiefsten im Minus?",
+       subtitle = "Fokus auf den Bereich bis -2.000 € (Boxen gestreckt für bessere Lesbarkeit)",
+       x = "Berufsgruppe",
+       y = "Kontostand (Schulden) in €")
