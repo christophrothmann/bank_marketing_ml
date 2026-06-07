@@ -1,5 +1,5 @@
 # --- Benötigte Bibliotheken prüfen und installieren ---
-required_packages <- c("dplyr", "here")
+required_packages <- c("dplyr", "here", "ggplot2")
 missing_packages <- required_packages[!(required_packages %in% installed.packages()[, "Package"])]
 if (length(missing_packages) > 0) {
   install.packages(missing_packages, repos = "https://cran.rstudio.com/")
@@ -7,6 +7,8 @@ if (length(missing_packages) > 0) {
 
 library(dplyr)
 library(here)
+library(ggplot2)
+library(grid)
 
 # Set global options
 options(scipen = 999)
@@ -890,6 +892,8 @@ cat(
   append = TRUE
 )
 
+summary(outliers)
+
 # --- Ausreißer-Analyse für balance ---
 q75_bal <- quantile(Daten$balance, 0.75, na.rm = TRUE)
 iqr_bal <- IQR(Daten$balance, na.rm = TRUE)
@@ -903,6 +907,130 @@ outliers <- outliers[order(-outliers$balance), ]
 outliers_csv_path <- here::here("source", "analytics_output", "balance_outliers.csv")
 write.csv(outliers, file = outliers_csv_path, row.names = FALSE)
 
+# Visualisierung für die Ausreißer erstellen
+# Wir erstellen ein Grid mit 4 aussagekräftigen Plots unter Verwendung von ggplot2
+# 1. Abschlussquote im Vergleich (Normal vs Ausreißer)
+# 2. Altersverteilung im Vergleich
+# 3. Job-Verteilung im Vergleich (Top-Berufe)
+# 4. Kredite im Vergleich
+
+Daten_plot <- Daten
+Daten_plot$outlier_group <- ifelse(Daten_plot$balance > outlier_cutoff, "Ausreißer (>3462 €)", "Normalbereich (≤3462 €)")
+Daten_plot$outlier_group <- factor(Daten_plot$outlier_group, levels = c("Normalbereich (≤3462 €)", "Ausreißer (>3462 €)"))
+
+colors_group <- c("Normalbereich (≤3462 €)" = "#5A738E", "Ausreißer (>3462 €)" = "#10B981")
+
+premium_theme <- theme_minimal(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, color = "#2C3E50", margin = margin(b = 10)),
+    axis.title = element_text(face = "bold", size = 10, color = "#34495E"),
+    axis.text = element_text(color = "#2C3E50"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "#ECF0F1"),
+    legend.position = "none"
+  )
+
+# Plot 1: Abschlussquote
+conv_data <- Daten_plot %>%
+  group_by(outlier_group) %>%
+  summarise(
+    total = n(),
+    yes_count = sum(y == "yes"),
+    rate = (yes_count / total) * 100,
+    .groups = "drop"
+  )
+
+p1 <- ggplot(conv_data, aes(x = outlier_group, y = rate, fill = outlier_group)) +
+  geom_bar(stat = "identity", width = 0.5, alpha = 0.9) +
+  geom_text(aes(label = sprintf("%.2f%%", rate)), vjust = -0.5, fontface = "bold", size = 3.5) +
+  scale_fill_manual(values = colors_group) +
+  scale_y_continuous(limits = c(0, 20), expand = c(0, 0)) +
+  labs(
+    title = "Abschlussquote (y = 'yes') im Vergleich",
+    x = "Kundengruppe",
+    y = "Abschlussrate (%)"
+  ) +
+  premium_theme
+
+# Plot 2: Altersverteilung
+p2 <- ggplot(Daten_plot, aes(x = outlier_group, y = age, fill = outlier_group)) +
+  geom_boxplot(width = 0.4, alpha = 0.8, outlier.shape = 16, outlier.alpha = 0.3) +
+  scale_fill_manual(values = colors_group) +
+  labs(
+    title = "Altersverteilung",
+    x = "Kundengruppe",
+    y = "Alter"
+  ) +
+  premium_theme
+
+# Plot 3: Top Job Profiles
+job_data <- Daten_plot %>%
+  group_by(outlier_group, job) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(outlier_group) %>%
+  mutate(percentage = (count / sum(count)) * 100) %>%
+  ungroup()
+
+top_jobs <- Daten_plot %>%
+  group_by(job) %>%
+  summarise(count = n()) %>%
+  top_n(6, count) %>%
+  pull(job)
+
+job_data_filtered <- job_data %>%
+  filter(job %in% top_jobs)
+
+p3 <- ggplot(job_data_filtered, aes(x = reorder(job, percentage), y = percentage, fill = outlier_group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7, alpha = 0.9) +
+  coord_flip() +
+  scale_fill_manual(values = colors_group) +
+  labs(
+    title = "Häufigste Berufe (Anteil in %)",
+    x = "Beruf",
+    y = "Anteil an der Gruppe (%)",
+    fill = "Kundengruppe"
+  ) +
+  premium_theme +
+  theme(legend.position = "bottom", legend.title = element_blank())
+
+# Plot 4: Kredite im Vergleich
+housing_summary <- Daten_plot %>%
+  group_by(outlier_group) %>%
+  summarise(pct = sum(housing == "yes") / n() * 100, .groups = "drop") %>%
+  mutate(loan_type = "Immobilienkredit (housing)")
+
+personal_summary <- Daten_plot %>%
+  group_by(outlier_group) %>%
+  summarise(pct = sum(loan == "yes") / n() * 100, .groups = "drop") %>%
+  mutate(loan_type = "Privatkredit (loan)")
+
+loan_data <- rbind(housing_summary, personal_summary)
+
+p4 <- ggplot(loan_data, aes(x = loan_type, y = pct, fill = outlier_group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.6, alpha = 0.9) +
+  geom_text(aes(label = sprintf("%.1f%%", pct)), position = position_dodge(width = 0.7), vjust = -0.5, fontface = "bold", size = 3) +
+  scale_fill_manual(values = colors_group) +
+  scale_y_continuous(limits = c(0, 70), expand = c(0, 0)) +
+  labs(
+    title = "Bestehende Kredite im Vergleich",
+    x = "Kreditart",
+    y = "Anteil mit Kredit (%)"
+  ) +
+  premium_theme
+
+# Save to output_dir
+outlier_plot_path <- file.path(output_dir, "balance_outliers_analysis.png")
+png(outlier_plot_path, width = 1000, height = 800, res = 120)
+
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(2, 2)))
+print(p1, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
+print(p2, vp = viewport(layout.pos.row = 1, layout.pos.col = 2))
+print(p3, vp = viewport(layout.pos.row = 2, layout.pos.col = 1))
+print(p4, vp = viewport(layout.pos.row = 2, layout.pos.col = 2))
+
+dev.off()
+
 # Bericht erweitern
 cat(
   paste0(
@@ -915,6 +1043,8 @@ cat(
     "* **Vergleich zur Gesamt-Abschlussrate**: ", round(mean(Daten$y == "yes") * 100, 2), "%\n\n",
     "Die kompletten Datenpunkte der Ausreißer mit allen Variablen wurden in der folgenden CSV-Datei gespeichert: ",
     "[balance_outliers.csv](../source/analytics_output/balance_outliers.csv).\n\n",
+    "#### Visualisierung der Ausreißer-Analyse:\n\n",
+    "![Visualisierung der Ausreißer-Analyse](../source/analytics_output/balance_outliers_analysis.png)\n\n",
     "#### Erste 10 Ausreißer (sortiert nach höchstem Guthaben):\n\n"
   ),
   file = report_file,
