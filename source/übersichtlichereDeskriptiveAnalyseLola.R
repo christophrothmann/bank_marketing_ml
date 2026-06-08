@@ -561,7 +561,6 @@ ggplot(Daten, aes(x = month, fill = poutcome)) +
   scale_fill_manual(values = poutcome_farben) + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # Schrift leicht schräg, sieht edler aus
   labs(title = "Kundenstruktur über das gesamte Jahr",
-       subtitle = "Der graue Block zeigt schonungslos, in welchen Monaten Kaltakquise betrieben wurde",
        x = "Monat",
        y = "Anteil der Kontaktarten in %",
        fill = "Letztes Kampagnenergebnis")
@@ -628,7 +627,6 @@ ggplot(Daten, aes(x = altersgruppe, fill = altersgruppe)) +
   scale_fill_brewer(palette = "Blues") + 
   theme(axis.text.x = element_text(angle = 15, hjust = 1)) +
   labs(title = "Zielgruppen-Check: Wer wird eigentlich angerufen?",
-       subtitle = "Die absolute Masse der Callcenter-Kapazitäten fließt in die mittlere Altersgruppe",
        x = "Altersgruppe",
        y = "Absolute Anzahl der Kontaktierten",
        fill = "Altersgruppe")
@@ -647,7 +645,7 @@ tabelle_erfolg <- table(Daten$altersgruppe, Daten$poutcome)
 prozent_erfolg <- prop.table(tabelle_erfolg, margin = 1) * 100
 round(prozent_erfolg, 2)
 
-library(ggplot2)
+Slibrary(ggplot2)
 
 ggplot(Daten, aes(x = altersgruppe, fill = poutcome)) +
   geom_bar(position = "fill", color = "black") +
@@ -659,8 +657,7 @@ ggplot(Daten, aes(x = altersgruppe, fill = poutcome)) +
                                "unknown" = "gray85", 
                                "other" = "lightblue")) +
   theme(axis.text.x = element_text(angle = 15, hjust = 1)) +
-  labs(title = "Historischer Erfolg nach Altersgruppen",
-       subtitle = "Sind Senioren im System, weil sie treue Käufer sind?",
+  labs(title = "Erfolg nach Altersgruppen",
        x = "Altersgruppe",
        y = "Anteil der Ergebnisse in %",
        fill = "Letztes Ergebnis (poutcome)")
@@ -817,6 +814,267 @@ ggplot(schulden_daten, aes(x = reorder(job, balance, FUN = median), y = balance)
 # Check: Hat der Kalendertag einen Einfluss auf den Erfolg?
 modell_day <- glm(y_num ~ day, data = Daten, family = "binomial")
 summary(modell_day)
+
+
+# Abschlussquote in % pro Kalendertag berechnen
+tag_check <- aggregate(y_num ~ day, data = Daten, FUN = mean)
+tag_check$y_num <- round(tag_check$y_num * 100, 2)
+print(tag_check)
+
+
+
+# age und balance
+# 1. Der Durchschnitt (Mean) - Zeigt, wo das gesamte Geld liegt
+aggregate(balance ~ altersgruppe, data = Daten, FUN = mean)
+
+# 2. Der Median - Der "typische" Kontostand, unbeeinflusst von extremen Ausreißern
+aggregate(balance ~ altersgruppe, data = Daten, FUN = median)
+
+library(ggplot2)
+library(dplyr)
+
+# 1. Daten kompakt für den Plot vorbereiten (Median berechnen)
+highlights_schulden <- Daten %>%
+  group_by(altersgruppe) %>%
+  summarise(Median_Guthaben = median(balance))
+
+# 2. Der finale PowerPoint-Plot
+ggplot(highlights_schulden, aes(x = altersgruppe, y = Median_Guthaben, fill = altersgruppe)) +
+  # Schicke Säulen zeichnen
+  geom_col(width = 0.6, alpha = 0.9, show.legend = FALSE) +
+  # Die Euro-Werte direkt ÜBER die Säulen schreiben (kein Achsen-Raten nötig!)
+  geom_text(aes(label = paste0(format(Median_Guthaben, big.mark = "."), " €")), 
+            vjust = -0.6, fontface = "bold", size = 5, color = "black") +
+  # Farb-Highlighting: Nur die Senioren knallen rein, der Rest hält sich dezent zurück
+  scale_fill_manual(values = c("#B0BEC5", "#B0BEC5", "#B0BEC5", "#2E7D32")) + 
+  theme_minimal(base_size = 14) +
+  # Y-Achse ein bisschen nach oben strecken, damit die Textlabels Platz haben
+  scale_y_continuous(limits = c(0, 1600)) +
+  labs(
+    title = "Kontostand nach Altersgruppen",
+    x = "Altersgruppe",
+    y = "Kontostand (Median) in €"
+  ) +
+  # Styling für die Präsentation optimieren
+  theme(
+    plot.title = element_text(face = "bold", size = 16, margin = margin(b = 5)),
+    plot.subtitle = element_text(color = "darkgray", margin = margin(b = 15)),
+    panel.grid.major.x = element_blank(), # Vertikale Linien löschen (wirkt aufgeräumter)
+    axis.text.x = element_text(face = "bold", color = "black")
+  )
+
+
+# Der ultimative Kausalitäts-Check: Alter kontrolliert für den Kontostand
+modell_kontrolle <- glm(y_num ~ altersgruppe + balance, data = Daten, family = "binomial")
+summary(modell_kontrolle)
+
+summary(Daten)
+
+
+
+
+
+
+
+
+# 1. Beweis: Wie sieht der Median aus, wenn wir NUR Konten im Plus (> 0) betrachten?
+aggregate(balance ~ job, data = subset(Daten, balance > 0), FUN = median)
+
+# 2. Beweis: Wer hat die tiefsten Schulden? (Das 5%-Quantil zeigt das extreme Minus)
+aggregate(balance ~ job, data = Daten, FUN = function(x) quantile(x, 0.05))
+
+
+
+
+library(ggplot2)
+library(dplyr)
+
+# 1. Median pro Beruf berechnen und Highlight-Kategorie für den Plot erstellen
+job_paradox <- Daten %>%
+  group_by(job) %>%
+  summarise(Median_Guthaben = median(balance)) %>%
+  # Markiert Studenten und Arbeitslose automatisch für die Einfärbung
+  mutate(Farbe = ifelse(job %in% c("student", "unemployed"), "suspekt", "normal"))
+
+# 2. Der unbereinigte Plot für die linke Folienseite
+ggplot(job_paradox, aes(x = reorder(job, Median_Guthaben), y = Median_Guthaben, fill = Farbe)) +
+  # Säulen zeichnen
+  geom_col(width = 0.6, alpha = 0.9, show.legend = FALSE) +
+  # Die Euro-Werte direkt über die Säulen schreiben
+  geom_text(aes(label = paste0(format(Median_Guthaben, big.mark = "."), " €")), 
+            vjust = -0.6, fontface = "bold", size = 4, color = "black") +
+  # Farbschema: Grau für den Standard, sattes Orange für das Paradoxon
+  scale_fill_manual(values = c("normal" = "steelblue", "suspekt" = "stelblue")) + 
+  theme_minimal(base_size = 14) +
+  # Y-Achse etwas strecken, damit die Textlabels oben nicht abgeschnitten werden
+  scale_y_continuous(limits = c(0, 950)) +
+  labs(
+    title = "Budget pro Berufsgruppe",
+    x = "Berufsgruppe",
+    y = "Kontostand (Median) in €"
+  ) +
+  # Styling für den PowerPoint-Export optimieren
+  theme(
+    plot.title = element_text(face = "bold", size = 16, margin = margin(b = 5)),
+    plot.subtitle = element_text(color = "darkgray", margin = margin(b = 15)),
+    panel.grid.major.x = element_blank(), # Vertikale Linien löschen für cleanen Look
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold", color = "black") # Schräge Schrift
+  )
+
+
+library(ggplot2)
+library(dplyr)
+
+# 1. Daten aufbereiten: Getrennte Mittelwerte für Plus und Minus berechnen
+grafik_aufteilung <- Daten %>%
+  mutate(Kategorie = ifelse(balance >= 0, "Schnitt Guthaben (wenn im Plus)", "Schnitt Schulden (wenn im Minus)")) %>%
+  group_by(job, Kategorie) %>%
+  summarise(Mittelwert = mean(balance), .groups = "drop") %>%
+  # Absolutbetrag nehmen, damit alle Säulen sauber nach oben wachsen
+  mutate(Betrag_Absolut = abs(Mittelwert))
+
+# Jobs logisch sortieren (nach der Höhe des Guthabens)
+ordnung_jobs <- grafik_aufteilung %>%
+  filter(Kategorie == "Schnitt Guthaben (wenn im Plus)") %>%
+  arrange(Mittelwert) %>%
+  pull(job)
+
+grafik_aufteilung$job <- factor(grafik_aufteilung$job, levels = ordnung_jobs)
+
+# 2. Der finale, übersichtliche Gruppen-Balkenplot
+ggplot(grafik_aufteilung, aes(x = job, y = Betrag_Absolut, fill = Kategorie)) +
+  # Säulen nebeneinander platzieren (position = "dodge")
+  geom_col(position = position_dodge(width = 0.75), width = 0.7, alpha = 0.9) +
+  # Euro-Zahlen direkt über die einzelnen Säulen schreiben
+  geom_text(aes(label = paste0(round(Betrag_Absolut, 0), " €")), 
+            position = position_dodge(width = 0.75), vjust = -0.5, fontface = "bold", size = 3.5, color = "black") +
+  # Schicke Ampel-Farben: sattes Grün für Guthaben, klares Rot für Schulden
+  scale_fill_manual(values = c("Schnitt Schulden (wenn im Minus)" = "#C62828", "Schnitt Guthaben (wenn im Plus)" = "#2E7D32")) +
+  theme_minimal(base_size = 14) +
+  # Y-Achse ein Stück nach oben verlängern für die Labels
+  scale_y_continuous(limits = c(0, max(grafik_aufteilung$Betrag_Absolut) * 1.1)) +
+  labs(
+    title = "Finanzielle Struktur: Guthaben vs. Schulden",
+    x = "Berufsgruppe",
+    y = "Durchschnittlicher Betrag in €",
+    fill = "Kontozustand"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, margin = margin(b = 5)),
+    plot.subtitle = element_text(color = "darkgray", margin = margin(b = 15)),
+    panel.grid.major.x = element_blank(), # Vertikale Linien ausblenden
+    legend.position = "top", # Legende nach oben packen
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold", color = "black")
+  )
+
+library(ggplot2)
+library(dplyr)
+
+# 1. Median pro Beruf berechnen und Highlight-Kategorie für den Plot erstellen
+job_paradox <- Daten %>%
+  group_by(job) %>%
+  summarise(Median_Guthaben = median(balance)) %>%
+  # Markiert Studenten und Arbeitslose automatisch für die Einfärbung
+  mutate(Farbe = ifelse(job %in% c("student", "unemployed"), "suspekt", "normal"))
+
+# 2. Der unbereinigte Plot für die linke Folienseite
+ggplot(job_paradox, aes(x = reorder(job, Median_Guthaben), y = Median_Guthaben, fill = Farbe)) +
+  # Säulen zeichnen
+  geom_col(width = 0.6, alpha = 0.9, show.legend = FALSE) +
+  # Die Euro-Werte direkt über die Säulen schreiben
+  geom_text(aes(label = paste0(format(Median_Guthaben, big.mark = "."), " €")), 
+            vjust = -0.6, fontface = "bold", size = 4, color = "black") +
+  # Farbschema: Grau für den Standard, sattes Orange für das Paradoxon
+  scale_fill_manual(values = c("normal" = "#B0BEC5", "suspekt" = "#E65100")) + 
+  theme_minimal(base_size = 14) +
+  # Y-Achse etwas strecken, damit die Textlabels oben nicht abgeschnitten werden
+  scale_y_continuous(limits = c(0, 950)) +
+  labs(
+    title = "Das Budget-Paradoxon (Unbereinigt)",
+    subtitle = "Girokonto-Bestand (Median) wirft logische Fragen auf",
+    x = "Berufsgruppe",
+    y = "Kontostand (Median) in €"
+  ) +
+  # Styling für den PowerPoint-Export optimieren
+  theme(
+    plot.title = element_text(face = "bold", size = 16, margin = margin(b = 5)),
+    plot.subtitle = element_text(color = "darkgray", margin = margin(b = 15)),
+    panel.grid.major.x = element_blank(), # Vertikale Linien löschen für cleanen Look
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold", color = "black") # Schräge Schrift
+  )
+
+
+
+
+
+# Check: Wie viel Prozent schließen beim 1., 2., 3. oder 10. Anruf ab?
+camp_check <- aggregate(y_num ~ campaign, data = Daten, FUN = mean)
+camp_check$y_num <- round(camp_check$y_num * 100, 2)
+print(head(camp_check, 10)) # Zeigt die ersten 10 Anrufe
+
+
+library(ggplot2)
+
+# Wir plotten nur die ersten 8 Anrufe, weil danach kaum noch Abschlüsse kommen
+ggplot(head(camp_check, 8), aes(x = campaign, y = y_num)) +
+  # Die rote Trendlinie für den Absturz
+  geom_line(color = "steelblue", size = 1.2) +
+  geom_point(color = "steelblue", size = 3.5) +
+  # Euro/Prozent-Zahlen direkt an die Punkte schreiben
+  geom_text(aes(label = paste0(y_num, " %")), vjust = -1, fontface = "bold", size = 4) +
+  theme_minimal(base_size = 14) +
+  scale_x_continuous(breaks = 1:8) +
+  scale_y_continuous(limits = c(0, max(camp_check$y_num) * 1.2)) +
+  labs(
+    title = "Abschlussquote in % nach Anzahl der Kontaktversuche",
+    x = "Anzahl der Anrufe in dieser Kampagne",
+    y = "Abschlussquote in %"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    panel.grid.major.x = element_blank()
+  )
+
+
+table(Daten$day)
+
+
+library(ggplot2)
+library(dplyr)
+
+# 1. Daten für den Mismatch-Plot zusammenrechnen
+day_story <- Daten %>%
+  group_by(day) %>%
+  summarise(
+    Anrufe = n(),
+    Quote = mean(y_num) * 100
+  )
+
+# 2. Der Plot, der das Callcenter-Drama aufdeckt
+ggplot(day_story, aes(x = day)) +
+  # Die blauen Balken für das Anrufvolumen (Masse)
+  geom_col(aes(y = Anrufe), fill = "steelblue", alpha = 0.7) +
+  # Die rote Linie für die eigentliche Erfolgsquote
+  geom_line(aes(y = Quote * 80), color = "#C62828", size = 1.2) + # Skaliert für die rechte Achse
+  geom_point(aes(y = Quote * 80), color = "#C62828", size = 2) +
+  # JETZT KORRIGIERT: sec.axis mit einem PUNKT geschrieben!
+  scale_y_continuous(
+    name = "Anzahl Anrufe (Graue Balken)",
+    sec.axis = sec_axis(~./80, name = "Abschlussquote in % (Rote Linie)")
+  ) +
+  scale_x_continuous(breaks = 1:31) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Kontakte und Erfolg",
+    x = "Kalendertag"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    panel.grid.minor = element_blank(),
+    axis.title.y.right = element_text(color = "#C62828", face = "bold"),
+    axis.title.y.left = element_text(color = "#37474F", face = "bold")
+  )
+
 
 
 # Abschlussquote in % pro Kalendertag berechnen
