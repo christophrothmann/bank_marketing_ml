@@ -1,11 +1,20 @@
+# --- Benötigte Bibliotheken prüfen und installieren ---
+required_packages <- c("dplyr", "here", "ggplot2")
+missing_packages <- required_packages[!(required_packages %in% installed.packages()[, "Package"])]
+if (length(missing_packages) > 0) {
+  install.packages(missing_packages, repos = "https://cran.rstudio.com/")
+}
+
 library(dplyr)
 library(here)
+library(ggplot2)
+library(grid)
 
 # Set global options
 options(scipen = 999)
 
 # Define directories
-output_dir <- here::here("source", "analytics_output", "v2")
+output_dir <- here::here("source", "analytics_output")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 report_file <- here::here(
   "docs",
@@ -180,6 +189,41 @@ format_nominal_stats <- function(var_name, x) {
   return(md)
 }
 
+# Hilfsfunktion zur Berechnung der Spanne der Abschlussraten für kategoriale Variablen
+get_conversion_span <- function(data, var_name, translate = TRUE) {
+  tbl <- table(data[[var_name]], data$y)
+  row_totals <- rowSums(tbl)
+  yes_col <- which(colnames(tbl) == "yes")
+  rates <- round((tbl[, yes_col] / row_totals) * 100, 1)
+
+  rates <- na.omit(rates)
+
+  min_idx <- which.min(rates)
+  max_idx <- which.max(rates)
+
+  min_val <- rates[min_idx]
+  min_cat <- names(rates)[min_idx]
+  max_val <- rates[max_idx]
+  max_cat <- names(rates)[max_idx]
+
+  translate_cat <- function(cat) {
+    if (translate) {
+      if (cat == "yes") {
+        return("ja")
+      }
+      if (cat == "no") {
+        return("nein")
+      }
+    }
+    return(cat)
+  }
+
+  paste0(
+    sprintf("%.1f", min_val), "% (", translate_cat(min_cat), ") bis ",
+    sprintf("%.1f", max_val), "% (", translate_cat(max_cat), ")"
+  )
+}
+
 # Hilfsfunktion zur Formatierung gruppierter metrischer Kennzahlen
 format_bivariate_metric_stats <- function(var_name, x, y) {
   grouped <- data.frame(x = x, y = y)
@@ -231,7 +275,7 @@ format_bivariate_metric_stats <- function(var_name, x, y) {
   return(md)
 }
 
-# Hilfsfunktion zum Plotten von Prozent-Kreuztabellen (analog zum Professor)
+# Hilfsfunktion zum Plotten von Prozent-Kreuztabellen
 plot_percentage_barplot <- function(tbl, var_name, filename) {
   row_totals <- rowSums(tbl)
   A_prop <- round(prop.table(tbl, margin = 1) * 100, digits = 1)
@@ -272,7 +316,7 @@ plot_percentage_barplot <- function(tbl, var_name, filename) {
 }
 
 # ==============================================================================
-# --- 4. Übersichtstabelle (Methoden aus Kapitel 2 Folien) ---
+# --- 4. Übersichtstabelle ---
 # ==============================================================================
 cat(
   "### Übersicht: Einfluss der Variablen auf y (auf einen Blick)\n\n",
@@ -308,36 +352,41 @@ cat(
 # Zeilen der Übersichtstabelle schreiben (exakte Berechnungen)
 cat(
   paste0(
-    "| **housing** | nominal | Abschlussrate: 7.7% (ja) bis 16.7% (nein) | ",
+    "| **housing** | nominal | Abschlussrate: ",
+    get_conversion_span(Daten, "housing", translate = TRUE), " | ",
     "Deutlicher negativer Einfluss bei bestehendem Kredit |\n"
   ),
   file = report_file, append = TRUE
 )
 cat(
   paste0(
-    "| **job** | nominal | Abschlussrate: 7.3% (blue-collar) bis 28.7% ",
-    "(student) | Starker Einfluss (Studenten/Rentner schließen oft ab) |\n"
+    "| **job** | nominal | Abschlussrate: ",
+    get_conversion_span(Daten, "job", translate = FALSE), " | ",
+    "Starker Einfluss (Studenten/Rentner schließen oft ab) |\n"
   ),
   file = report_file, append = TRUE
 )
 cat(
   paste0(
-    "| **education** | ordinal | Abschlussrate: 8.6% (primary) bis 15.0% ",
-    "(tertiary) | Moderater positiver Einfluss mit steigender Bildung |\n"
+    "| **education** | ordinal | Abschlussrate: ",
+    get_conversion_span(Daten, "education", translate = FALSE), " | ",
+    "Moderater positiver Einfluss mit steigender Bildung |\n"
   ),
   file = report_file, append = TRUE
 )
 cat(
   paste0(
-    "| **loan** | nominal | Abschlussrate: 6.7% (ja) bis 12.7% (nein) | ",
+    "| **loan** | nominal | Abschlussrate: ",
+    get_conversion_span(Daten, "loan", translate = TRUE), " | ",
     "Spürbarer negativer Einfluss bei bestehendem Privatkredit |\n"
   ),
   file = report_file, append = TRUE
 )
 cat(
   paste0(
-    "| **marital** | nominal | Abschlussrate: 10.1% (married) bis 14.9% ",
-    "(single) | Moderater Einfluss (Singles schließen am häufigsten ab) |\n"
+    "| **marital** | nominal | Abschlussrate: ",
+    get_conversion_span(Daten, "marital", translate = FALSE), " | ",
+    "Moderater Einfluss (Singles schließen am häufigsten ab) |\n"
   ),
   file = report_file, append = TRUE
 )
@@ -365,7 +414,8 @@ cat(
 )
 cat(
   paste0(
-    "| **default** | nominal | Abschlussrate: 6.4% (ja) bis 11.8% (nein) | ",
+    "| **default** | nominal | Abschlussrate: ",
+    get_conversion_span(Daten, "default", translate = TRUE), " | ",
     "Sehr geringer Einfluss (Verzugskunden schließen seltener ab) |\n"
   ),
   file = report_file, append = TRUE
@@ -402,12 +452,12 @@ hist(
   Daten$age,
   freq = FALSE,
   main = "Histogramm: Alter (age)",
-  xlab = "Alter", ylab = "Dichte", col = "lightgreen"
+  xlab = "Alter", ylab = "Dichte", col = "steelblue"
 )
 boxplot(
   Daten$age,
   main = "Boxplot: Alter (age)",
-  ylab = "Alter", col = "lightblue"
+  ylab = "Alter", col = "steelblue"
 )
 dev.off()
 
@@ -532,8 +582,8 @@ plot_percentage_barplot(tbl_job_y, "job", "bivariate_2_job_y.png")
 cat(
   paste0(
     "### Einfluss auf die Zielvariable y\n\n",
-    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von 7.3% ",
-    "(blue-collar) bis 28.7% (student)\n",
+    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von ",
+    get_conversion_span(Daten, "job", translate = FALSE), "\n",
     "* **Bewertungssatz**: Der Beruf hat einen deutlichen Einfluss auf den ",
     "Abschluss. Insbesondere Studenten (28.7% Erfolgsrate) und Rentner ",
     "(22.8% Erfolgsrate) schließen überdurchschnittlich häufig Festgelder ",
@@ -601,8 +651,8 @@ plot_percentage_barplot(tbl_marital_y, "marital", "bivariate_3_marital_y.png")
 cat(
   paste0(
     "### Einfluss auf die Zielvariable y\n\n",
-    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von 10.1% ",
-    "(married) bis 14.9% (single)\n",
+    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von ",
+    get_conversion_span(Daten, "marital", translate = FALSE), "\n",
     "* **Bewertungssatz**: Der Familienstand hat einen moderaten Einfluss auf ",
     "den Abschluss. Singles haben mit 14.9% die höchste Abschlussquote, ",
     "gefolgt von Geschiedenen (11.9%) und Verheirateten (10.1%).\n\n"
@@ -654,7 +704,7 @@ barplot(
 boxplot(
   as.numeric(na.omit(Daten$education)),
   main = "Boxplot Bildungsstand (1-3)",
-  names = "1=prim, 2=sek, 3=tert", col = "lightblue"
+  names = "1=prim, 2=sek, 3=tert", col = "steelblue"
 )
 dev.off()
 
@@ -688,8 +738,8 @@ cor_edu_s <- round(
 cat(
   paste0(
     "### Einfluss auf die Zielvariable y\n\n",
-    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von 8.6% ",
-    "(primary) bis 15.0% (tertiary)\n",
+    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von ",
+    get_conversion_span(Daten, "education", translate = FALSE), "\n",
     "* **Rangkorrelation (Spearman-R)**: ", cor_edu_s, "\n",
     "* **Bewertungssatz**: Der Bildungsstand hat einen moderaten positiven ",
     "Einfluss auf den Abschluss (Spearman-R: ", cor_edu_s, "). ",
@@ -760,8 +810,8 @@ plot_percentage_barplot(
 cat(
   paste0(
     "### Einfluss auf die Zielvariable y\n\n",
-    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von 6.4% ",
-    "(yes) bis 11.8% (no)\n",
+    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von ",
+    get_conversion_span(Daten, "default", translate = FALSE), "\n",
     "* **Bewertungssatz**: Ein Zahlungsverzug hat einen minimalen Einfluss. ",
     "Kunden mit Zahlungsverzug schließen zwar seltener ab (6.4% vs. 11.8%), ",
     "aber wegen des extrem geringen Anteils betroffener Kunden (1.8% des ",
@@ -796,12 +846,12 @@ hist(
   Daten$balance,
   freq = FALSE,
   main = "Histogramm: Guthaben (balance)",
-  xlab = "Guthaben (in Euro)", ylab = "Dichte", col = "lightgreen"
+  xlab = "Guthaben (in Euro)", ylab = "Dichte", col = "steelblue"
 )
 boxplot(
   Daten$balance,
   main = "Boxplot (ohne Ausreißer)",
-  ylab = "Guthaben (in Euro)", col = "lightblue", outline = FALSE
+  ylab = "Guthaben (in Euro)", col = "steelblue", outline = FALSE
 )
 dev.off()
 
@@ -841,6 +891,187 @@ cat(
   file = report_file,
   append = TRUE
 )
+
+summary(outliers)
+
+# --- Ausreißer-Analyse für balance ---
+q75_bal <- quantile(Daten$balance, 0.75, na.rm = TRUE)
+iqr_bal <- IQR(Daten$balance, na.rm = TRUE)
+outlier_cutoff <- q75_bal + 1.5 * iqr_bal
+outliers <- Daten[Daten$balance > outlier_cutoff, ]
+
+# Sortieren nach Guthaben absteigend
+outliers <- outliers[order(-outliers$balance), ]
+
+# Exportiere alle Variablen der Ausreißer als CSV
+outliers_csv_path <- here::here("source", "analytics_output", "balance_outliers.csv")
+write.csv(outliers, file = outliers_csv_path, row.names = FALSE)
+
+# Visualisierung für die Ausreißer erstellen
+# Wir erstellen ein Grid mit 4 aussagekräftigen Plots unter Verwendung von ggplot2
+# 1. Abschlussquote im Vergleich (Normal vs Ausreißer)
+# 2. Altersverteilung im Vergleich
+# 3. Job-Verteilung im Vergleich (Top-Berufe)
+# 4. Kredite im Vergleich
+
+Daten_plot <- Daten
+Daten_plot$outlier_group <- ifelse(Daten_plot$balance > outlier_cutoff, "Ausreißer (>3462 €)", "Normalbereich (≤3462 €)")
+Daten_plot$outlier_group <- factor(Daten_plot$outlier_group, levels = c("Normalbereich (≤3462 €)", "Ausreißer (>3462 €)"))
+
+colors_group <- c("Normalbereich (≤3462 €)" = "#5A738E", "Ausreißer (>3462 €)" = "#10B981")
+
+premium_theme <- theme_minimal(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, color = "#2C3E50", margin = margin(b = 10)),
+    axis.title = element_text(face = "bold", size = 10, color = "#34495E"),
+    axis.text = element_text(color = "#2C3E50"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "#ECF0F1"),
+    legend.position = "none"
+  )
+
+# Plot 1: Abschlussquote
+conv_data <- Daten_plot %>%
+  group_by(outlier_group) %>%
+  summarise(
+    total = n(),
+    yes_count = sum(y == "yes"),
+    rate = (yes_count / total) * 100,
+    .groups = "drop"
+  )
+
+p1 <- ggplot(conv_data, aes(x = outlier_group, y = rate, fill = outlier_group)) +
+  geom_bar(stat = "identity", width = 0.5, alpha = 0.9) +
+  geom_text(aes(label = sprintf("%.2f%%", rate)), vjust = -0.5, fontface = "bold", size = 3.5) +
+  scale_fill_manual(values = colors_group) +
+  scale_y_continuous(limits = c(0, 20), expand = c(0, 0)) +
+  labs(
+    title = "Abschlussquote (y = 'yes') im Vergleich",
+    x = "Kundengruppe",
+    y = "Abschlussrate (%)"
+  ) +
+  premium_theme
+
+# Plot 2: Altersverteilung
+p2 <- ggplot(Daten_plot, aes(x = outlier_group, y = age, fill = outlier_group)) +
+  geom_boxplot(width = 0.4, alpha = 0.8, outlier.shape = 16, outlier.alpha = 0.3) +
+  scale_fill_manual(values = colors_group) +
+  labs(
+    title = "Altersverteilung",
+    x = "Kundengruppe",
+    y = "Alter"
+  ) +
+  premium_theme
+
+# Plot 3: Top Job Profiles
+job_data <- Daten_plot %>%
+  group_by(outlier_group, job) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(outlier_group) %>%
+  mutate(percentage = (count / sum(count)) * 100) %>%
+  ungroup()
+
+top_jobs <- Daten_plot %>%
+  group_by(job) %>%
+  summarise(count = n()) %>%
+  top_n(6, count) %>%
+  pull(job)
+
+job_data_filtered <- job_data %>%
+  filter(job %in% top_jobs)
+
+p3 <- ggplot(job_data_filtered, aes(x = reorder(job, percentage), y = percentage, fill = outlier_group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7, alpha = 0.9) +
+  coord_flip() +
+  scale_fill_manual(values = colors_group) +
+  labs(
+    title = "Häufigste Berufe (Anteil in %)",
+    x = "Beruf",
+    y = "Anteil an der Gruppe (%)",
+    fill = "Kundengruppe"
+  ) +
+  premium_theme +
+  theme(legend.position = "bottom", legend.title = element_blank())
+
+# Plot 4: Kredite im Vergleich
+housing_summary <- Daten_plot %>%
+  group_by(outlier_group) %>%
+  summarise(pct = sum(housing == "yes") / n() * 100, .groups = "drop") %>%
+  mutate(loan_type = "Immobilienkredit (housing)")
+
+personal_summary <- Daten_plot %>%
+  group_by(outlier_group) %>%
+  summarise(pct = sum(loan == "yes") / n() * 100, .groups = "drop") %>%
+  mutate(loan_type = "Privatkredit (loan)")
+
+loan_data <- rbind(housing_summary, personal_summary)
+
+p4 <- ggplot(loan_data, aes(x = loan_type, y = pct, fill = outlier_group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.6, alpha = 0.9) +
+  geom_text(aes(label = sprintf("%.1f%%", pct)), position = position_dodge(width = 0.7), vjust = -0.5, fontface = "bold", size = 3) +
+  scale_fill_manual(values = colors_group) +
+  scale_y_continuous(limits = c(0, 70), expand = c(0, 0)) +
+  labs(
+    title = "Bestehende Kredite im Vergleich",
+    x = "Kreditart",
+    y = "Anteil mit Kredit (%)"
+  ) +
+  premium_theme
+
+# Save to output_dir
+outlier_plot_path <- file.path(output_dir, "balance_outliers_analysis.png")
+png(outlier_plot_path, width = 1000, height = 800, res = 120)
+
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(2, 2)))
+print(p1, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
+print(p2, vp = viewport(layout.pos.row = 1, layout.pos.col = 2))
+print(p3, vp = viewport(layout.pos.row = 2, layout.pos.col = 1))
+print(p4, vp = viewport(layout.pos.row = 2, layout.pos.col = 2))
+
+dev.off()
+
+# Bericht erweitern
+cat(
+  paste0(
+    "### Analyse der Ausreißer (hohe Guthabenwerte/\"budget\")\n\n",
+    "Als Ausreißer (oberes Ende) werden Datenpunkte definiert, deren Guthaben ",
+    "über dem Schwellenwert von Q3 + 1.5 * IQR liegt. ",
+    "Für die Variable **balance** liegt dieser Schwellenwert bei **", outlier_cutoff, " €**.\n\n",
+    "* **Anzahl der Ausreißer**: ", nrow(outliers), " von ", nrow(Daten), " Kunden (", round(nrow(outliers) / nrow(Daten) * 100, 2), "%)\n",
+    "* **Abschlussrate (y = yes) unter den Ausreißern**: ", round(mean(outliers$y == "yes") * 100, 2), "%\n",
+    "* **Vergleich zur Gesamt-Abschlussrate**: ", round(mean(Daten$y == "yes") * 100, 2), "%\n\n",
+    "Die kompletten Datenpunkte der Ausreißer mit allen Variablen wurden in der folgenden CSV-Datei gespeichert: ",
+    "[balance_outliers.csv](../source/analytics_output/balance_outliers.csv).\n\n",
+    "#### Visualisierung der Ausreißer-Analyse:\n\n",
+    "![Visualisierung der Ausreißer-Analyse](../source/analytics_output/balance_outliers_analysis.png)\n\n",
+    "#### Erste 10 Ausreißer (sortiert nach höchstem Guthaben):\n\n"
+  ),
+  file = report_file,
+  append = TRUE
+)
+
+# Erstelle Markdown-Tabelle der Top 10 Ausreißer
+top_10_outliers <- head(outliers, 10)
+table_cols <- c("age", "job", "marital", "education", "balance", "housing", "loan", "y")
+top_10_sub <- top_10_outliers[, table_cols]
+
+md_table <- "| age | job | marital | education | balance | housing | loan | y |\n"
+md_table <- paste0(md_table, "|:---|:---|:---|:---|:---|:---|:---|:---|\n")
+for (i in 1:nrow(top_10_sub)) {
+  md_table <- paste0(
+    md_table, "| ",
+    top_10_sub$age[i], " | ",
+    top_10_sub$job[i], " | ",
+    top_10_sub$marital[i], " | ",
+    top_10_sub$education[i], " | ",
+    top_10_sub$balance[i], " € | ",
+    top_10_sub$housing[i], " | ",
+    top_10_sub$loan[i], " | ",
+    top_10_sub$y[i], " |\n"
+  )
+}
+cat(paste0(md_table, "\n---\n\n"), file = report_file, append = TRUE)
 
 
 # ------------------------------------------------------------------------------
@@ -899,8 +1130,8 @@ plot_percentage_barplot(tbl_housing_y, "housing", "bivariate_7_housing_y.png")
 cat(
   paste0(
     "### Einfluss auf die Zielvariable y\n\n",
-    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von 7.7% ",
-    "(yes) bis 16.7% (no)\n",
+    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von ",
+    get_conversion_span(Daten, "housing", translate = FALSE), "\n",
     "* **Bewertungssatz**: Das Vorhandensein eines Immobilienkredits ",
     "hat einen starken negativen Einfluss auf den Abschluss. ",
     "Kunden ohne Immobilienkredit schließen mit 16.7% mehr als ",
@@ -968,8 +1199,8 @@ plot_percentage_barplot(tbl_loan_y, "loan", "bivariate_8_loan_y.png")
 cat(
   paste0(
     "### Einfluss auf die Zielvariable y\n\n",
-    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von 6.7% ",
-    "(yes) bis 12.7% (no)\n",
+    "* **Zusammenhangsmaß (Abschlussrate)**: Spanne von ",
+    get_conversion_span(Daten, "loan", translate = FALSE), "\n",
     "* **Bewertungssatz**: Ein Privatkredit hat einen moderaten negativen ",
     "Einfluss auf den Abschluss. ",
     "Kunden ohne Privatkredit schließen fast doppelt so häufig ab (12.7%) ",
