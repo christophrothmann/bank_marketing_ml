@@ -1,5 +1,6 @@
 library(here)
-
+library(caret)
+set.seed(42)
 # Set global options
 options(scipen = 999)
 
@@ -11,23 +12,20 @@ Daten <- read.csv(
     stringsAsFactors = TRUE
 )
 
-# Variable "duration" entfernen, da kaum aussagekraft über Ausgang von "y" hat.
+# Variable "duration" entfernen, da sie Data Leakage betreibt. Man weiß erst danach wie lange insgesamt telefoniert wurde.
 Daten <- Daten[, !names(Daten) %in% "duration"]
 
-# Chronologische Aufteilung ohne Mischen, da Zeitreihen vorliegen.
-N <- nrow(Daten)
-
-# --- 1. Standard-Aufteilung (70% Training / 30% Test) ---
-train_groesse_70 <- round(N * 0.7)
-
-train_data <- Daten[1:train_groesse_70, ]
-test_data <- Daten[(train_groesse_70 + 1):N, ]
+# Erstellt einen geschichteten (stratified) zufälligen Split basierend auf der Zielvariable y (70% Training / 30% Test)
+train_indices <- createDataPartition(Daten$y, p = 0.7, list = FALSE)
+train_data <- Daten[train_indices, ]
+test_data <- Daten[-train_indices, ]
 
 # --- 2. Dreiteilung (50% Training / 20% Validierung / 30% Test) ---
-train_groesse_50 <- round(N * 0.5)
-val_groesse_20 <- round(N * 0.2)
-val_end <- train_groesse_50 + val_groesse_20
+# Hier teilen wir ebenfalls geschichtet auf, um die Verteilung zu wahren.
+test_data_3way <- test_data # 30% Testdaten bleiben gleich
 
-train_data_3way <- Daten[1:train_groesse_50, ]
-val_data_3way <- Daten[(train_groesse_50 + 1):val_end, ]
-test_data_3way <- Daten[(val_end + 1):N, ]
+# Die verbleibenden 70% teilen wir im Verhältnis 50:20 auf (ca. 71.4% Train, 28.6% Val)
+val_indices <- createDataPartition(train_data$y, p = 2/7, list = FALSE)
+val_data_3way <- train_data[val_indices, ]
+train_data_3way <- train_data[-val_indices, ]
+
