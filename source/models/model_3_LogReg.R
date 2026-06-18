@@ -1,35 +1,31 @@
 # ==============================================================================
-# MODELL 2: XGBoost (UNGEWICHTET VS. GEWICHTET)
+# MODELL 3: LOGISTISCHE REGRESSION (UNGEWICHTET VS. GEWICHTET)
 # ==============================================================================
 
 # --- 1. DATEN & PAKETE LADEN ---
 library(here)
-library(xgboost)
 library(caret)
 
 # IPW-Vorbereitungsskript laden (enthält ModelData.R und ipw_weights)
 source(here::here("source", "models", "ipw_data.R"))
 
-cat("Bereite Daten für XGBoost vor (One-Hot-Encoding)...\n")
+cat("Bereite Daten für die Logistische Regression vor...\n")
 
-# --- 2. DATEN FÜR XGBOOST ÜBERSETZEN ---
-train_labels <- ifelse(train_data$y == "yes", 1, 0)
-test_labels <- ifelse(test_data$y == "yes", 1, 0)
+# --- 2. DUMMY-KODIERUNG & GEWICHTE EXTRAHIEREN ---
+# Extrahieren der Gewichte
 ipw_weights <- train_data$ipw_weight
 
-# ipw_weight und y aus Features entfernen
-train_features <- train_data[, !names(train_data) %in% c("y", "ipw_weight")]
-test_features <- test_data[, names(test_data) != "y"]
+# month entfernen (Multikollinearität) und ipw_weight (damit es nicht als Feature dient)
+train_features <- train_data[, !names(train_data) %in% c("y", "month", "ipw_weight")]
+test_features <- test_data[, !names(test_data) %in% c("y", "month")]
 
 # One-Hot-Encoding
 dummy_model <- dummyVars(~., data = train_features)
-train_matrix <- predict(dummy_model, newdata = train_features)
-test_matrix <- predict(dummy_model, newdata = test_features)
+train_matrix <- as.data.frame(predict(dummy_model, newdata = train_features))
+test_matrix <- as.data.frame(predict(dummy_model, newdata = test_features))
 
-# Spezifische DMatrices erstellen
-dtrain_unweighted <- xgb.DMatrix(data = train_matrix, label = train_labels)
-dtrain_weighted <- xgb.DMatrix(data = train_matrix, label = train_labels, weight = ipw_weights)
-dtest <- xgb.DMatrix(data = test_matrix, label = test_labels)
+# Target-Variable y hinzufügen
+train_matrix$y <- train_data$y
 
 # --- Helper Funktion zur Schwellenwert-Optimierung ---
 optimize_threshold <- function(preds_prob, actual_labels) {
@@ -50,28 +46,22 @@ optimize_threshold <- function(preds_prob, actual_labels) {
   return(results[best_idx, ])
 }
 
-# --- XGBoost Parameter ---
-xgb_params <- list(
-  objective = "binary:logistic",
-  eval_metric = "auc",
-  max_depth = 6,
-  eta = 0.3
-)
-
 # ==============================================================================
-# MODELL A: UNGEWICHTET (PRIMÄR)
+# MODELL A: UNGEWICHTET (PRIMÄR - FÜR ALLGEMEINEN TARGETING USE CASE)
 # ==============================================================================
-cat("\n--- STARTE TRAINING: UNGEWICHTETES XGBOOST (PRIMÄR) ---\n")
-set.seed(42)
-xgb_model_unweighted <- xgb.train(
-  data = dtrain_unweighted,
-  nrounds = 100,
-  params = xgb_params
-)
-cat("Training ungewichtetes XGBoost abgeschlossen!\n")
+cat("\n--- STARTE TRAINING: UNGEWICHTETES MODELL (PRIMÄR) ---\n")
+log_model_unweighted <- glm(y ~ ., data = train_matrix, family = binomial)
+cat("Training ungewichtet abgeschlossen!\n")
 
-# Vorhersage & Evaluation
-preds_prob_unweighted <- predict(xgb_model_unweighted, dtest)
+# Koeffizienten prüfen
+coefs_unweighted <- summary(log_model_unweighted)$coefficients
+if ("campaign_month" %in% rownames(coefs_unweighted)) {
+  cat("\nSchätzung campaign_month (ungewichtet):\n")
+  print(coefs_unweighted["campaign_month", , drop = FALSE])
+}
+
+# Evaluation
+preds_prob_unweighted <- predict(log_model_unweighted, newdata = test_matrix, type = "response")
 best_res_unweighted <- optimize_threshold(preds_prob_unweighted, test_data$y)
 
 cat(sprintf("\nOptimaler Schwellenwert (ungewichtet): %f (Max F1: %f)\n", 
@@ -84,19 +74,21 @@ print(cm_unweighted)
 
 
 # ==============================================================================
-# MODELL B: GEWICHTET (IPW BEREINIGT)
+# MODELL B: GEWICHTET (IPW VERGLEICHSMODELL)
 # ==============================================================================
-cat("\n--- STARTE TRAINING: GEWICHTETES XGBOOST (IPW BEREINIGT) ---\n")
-set.seed(42)
-xgb_model_weighted <- xgb.train(
-  data = dtrain_weighted,
-  nrounds = 100,
-  params = xgb_params
-)
-cat("Training gewichtetes XGBoost abgeschlossen!\n")
+cat("\n--- STARTE TRAINING: GEWICHTETES MODELL (IPW BEREINIGT) ---\n")
+log_model_weighted <- glm(y ~ ., data = train_matrix, family = binomial, weights = ipw_weights)
+cat("Training gewichtet abgeschlossen!\n")
 
-# Vorhersage & Evaluation
-preds_prob_weighted <- predict(xgb_model_weighted, dtest)
+# Koeffizienten prüfen
+coefs_weighted <- summary(log_model_weighted)$coefficients
+if ("campaign_month" %in% rownames(coefs_weighted)) {
+  cat("\nSchätzung campaign_month (gewichtet):\n")
+  print(coefs_weighted["campaign_month", , drop = FALSE])
+}
+
+# Evaluation
+preds_prob_weighted <- predict(log_model_weighted, newdata = test_matrix, type = "response")
 best_res_weighted <- optimize_threshold(preds_prob_weighted, test_data$y)
 
 cat(sprintf("\nOptimaler Schwellenwert (gewichtet): %f (Max F1: %f)\n", 
@@ -108,14 +100,14 @@ cm_weighted <- confusionMatrix(preds_class_weighted, test_data$y, positive = "ye
 print(cm_weighted)
 
 
-# --- 6. MODELLE SPEICHERN ---
+# --- 5. MODELLE SPEICHERN ---
 if (!dir.exists(here::here("source", "models_output"))) {
   dir.create(here::here("source", "models_output"))
 }
-speicher_pfad_unweighted <- here::here("source", "models_output", "xgboost_model_unweighted.rds")
-speicher_pfad_weighted <- here::here("source", "models_output", "xgboost_model_weighted.rds")
+speicher_pfad_unweighted <- here::here("source", "models_output", "logistic_model_unweighted.rds")
+speicher_pfad_weighted <- here::here("source", "models_output", "logistic_model_weighted.rds")
 
-saveRDS(xgb_model_unweighted, file = speicher_pfad_unweighted)
-saveRDS(xgb_model_weighted, file = speicher_pfad_weighted)
+saveRDS(log_model_unweighted, file = speicher_pfad_unweighted)
+saveRDS(log_model_weighted, file = speicher_pfad_weighted)
 
-cat("\nXGBoost-Modelle erfolgreich in source/models_output/ gespeichert.\n")
+cat("\nModelle erfolgreich in source/models_output/ gespeichert.\n")
