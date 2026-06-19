@@ -496,7 +496,7 @@ cat(sprintf("Pearson-Korrelationskoeffizient: %.2f\n", pearson_kampagne))
 
 
 # ==============================================================================
-# DAY ANALYSE (PRO DUALE ACHSE)
+# DAY ANALYSE
 # ==============================================================================
 library(ggplot2)
 library(dplyr)
@@ -536,3 +536,68 @@ ggplot(day_story, aes(x = day)) +
     axis.text.y.right = element_text(color = "#C62828", face = "bold"),
     axis.text.x = element_text(size = 10)
   )
+
+
+
+
+
+# ==============================================================================
+# MARITAL ANALYSE
+# ==============================================================================
+
+# --- Linke Grafik ---
+library(ggplot2)
+plot_links_marital <- ggplot(Daten, aes(x = marital)) +
+  geom_bar(fill = "#4682B4", color = "black", width = 0.6) + # Schönes Stahlblau mit schwarzem Rand
+  theme_classic() +
+  labs(
+    title = "Häufigkeit des Familienstands (marital)",
+    x = "",
+    y = "Absolute Häufigkeit"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5), # Perfekt zentriert und fett
+    axis.text = element_text(size = 11)
+  )
+
+print(plot_links_marital)
+
+
+# --- Rechte Grafik ---
+library(dplyr)
+
+marital_y_probs <- Daten %>%
+  group_by(marital, y) %>%
+  summarise(Anzahl = n(), .groups = "drop") %>%
+  group_by(marital) %>%
+  mutate(Prozent = (Anzahl / sum(Anzahl)) * 100)
+
+gesamt_n <- nrow(Daten)
+
+plot_rechts_marital <- ggplot(marital_y_probs, aes(x = marital, y = Prozent, fill = y)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), color = "black", width = 0.6) +
+  
+  geom_text(aes(label = sprintf("%.1f", Prozent)), 
+            position = position_dodge(width = 0.7), 
+            vjust = -0.5, size = 3.5, fontface = "plain") +
+  
+  theme_classic() +
+  scale_fill_manual(
+    values = c("no" = "lightcoral", "yes" = "lightgreen"),
+    labels = c(paste0("Abschluss (y): no (Gesamt n=", gesamt_n, ")"), 
+               paste0("Abschluss (y): yes (Gesamt n=", gesamt_n, ")"))
+  ) +
+  labs(
+    title = "Zusammenhang zwischen marital und y",
+    x = "marital",
+    y = "Häufigkeit (in %)",
+    fill = ""
+  ) +
+  ylim(0, 105) + # Platz nach oben für die Textlabels
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "top", 
+    legend.text = element_text(size = 9)
+  )
+
+print(plot_rechts_marital)
