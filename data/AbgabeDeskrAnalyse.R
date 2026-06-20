@@ -1,19 +1,29 @@
+required_packages <- c("dplyr", "here", "ggplot2", "scales", "patchwork")
+missing_packages <- required_packages[!(required_packages %in% installed.packages()[, "Package"])]
+if (length(missing_packages) > 0) {
+  install.packages(missing_packages, repos = "https://cran.rstudio.com/")
+}
+
 library(here)
-Daten <- read.csv(here::here("data", "bank-full.csv"), header=TRUE, sep=";", fill=TRUE, stringsAsFactors=TRUE)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(patchwork)
+
+
+Daten <- read.csv(here::here("data", "bank-full.csv"), header = TRUE, sep = ";", fill = TRUE, stringsAsFactors = TRUE)
 summary(Daten)
 
 
-
 # ========================================================
-# DEFAULT ANALYSE 
+# DEFAULT ANALYSE
 # ========================================================
 
 # --- Linke Grafik ---
-library(ggplot2)
-library(here)
+
 
 plot_links <- ggplot(Daten, aes(x = default)) +
-  geom_bar(fill = "#4682B4", color = "black", width = 0.5) + 
+  geom_bar(fill = "#4682B4", color = "black", width = 0.5) +
   theme_classic() +
   labs(
     title = "Kredit im Verzug? (default)",
@@ -22,14 +32,14 @@ plot_links <- ggplot(Daten, aes(x = default)) +
   ) +
   theme(
     # FIX: plot.title statt plot_title nutzen!
-    plot.title = element_text(face = "bold", hjust = 0.5), 
+    plot.title = element_text(face = "bold", hjust = 0.5),
     axis.text = element_text(size = 11)
   )
 
 print(plot_links)
 
 # --- Rechte Grafik ---
-library(dplyr)
+
 
 default_y_probs <- Daten %>%
   group_by(default, y) %>%
@@ -41,15 +51,15 @@ gesamt_n <- nrow(Daten)
 
 plot_rechts <- ggplot(default_y_probs, aes(x = default, y = Prozent, fill = y)) +
   geom_bar(stat = "identity", position = position_dodge(width = 0.7), color = "black", width = 0.6) +
-  
-  geom_text(aes(label = sprintf("%.1f", Prozent)), 
-            position = position_dodge(width = 0.7), 
+
+  geom_text(aes(label = sprintf("%.1f", Prozent)),
+            position = position_dodge(width = 0.7),
             vjust = -0.5, size = 3.5, fontface = "plain") +
-  
+
   theme_classic() +
   scale_fill_manual(
     values = c("no" = "lightcoral", "yes" = "lightgreen"),
-    labels = c(paste0("Abschluss (y): no (Gesamt n=", gesamt_n, ")"), 
+    labels = c(paste0("Abschluss (y): no (Gesamt n=", gesamt_n, ")"),
                paste0("Abschluss (y): yes (Gesamt n=", gesamt_n, ")"))
   ) +
   labs(
@@ -58,10 +68,10 @@ plot_rechts <- ggplot(default_y_probs, aes(x = default, y = Prozent, fill = y)) 
     y = "Häufigkeit (in %)",
     fill = ""
   ) +
-  ylim(0, 105) + 
+  ylim(0, 105) +
   theme(
     plot_title = element_text(face = "bold", hjust = 0.5),
-    legend.position = "top", 
+    legend.position = "top",
     legend.text = element_text(size = 9)
   )
 
@@ -69,15 +79,12 @@ print(plot_rechts)
 
 
 # ========================================================
-# MONATSANALYSE 
+# MONATSANALYSE
 # ========================================================
 
-library(dplyr)
-library(ggplot2)
-library(scales)
 
-if(!"year" %in% names(Daten)) {
-  month_lookup <- c(jan=1, feb=2, mar=3, apr=4, may=5, jun=6, jul=7, aug=8, sep=9, oct=10, nov=11, dec=12)
+if (!"year" %in% names(Daten)) {
+  month_lookup <- c(jan = 1, feb = 2, mar = 3, apr = 4, may = 5, jun = 6, jul = 7, aug = 8, sep = 9, oct = 10, nov = 11, dec = 12)
   month_nums <- month_lookup[as.character(Daten$month)]
   year_diffs <- c(0, diff(month_nums) < 0)
   Daten$year <- 2008 + cumsum(year_diffs)
@@ -85,8 +92,8 @@ if(!"year" %in% names(Daten)) {
 
 Daten <- Daten %>%
   mutate(
-    month_num = c(jan=1, feb=2, mar=3, apr=4, may=5, jun=6, jul=7, aug=8, sep=9, oct=10, nov=11, dec=12)[as.character(month)],
-    Datum     = as.Date(paste(year, month_num, "01", sep = "-")),
+    month_num = c(jan = 1, feb = 2, mar = 3, apr = 4, may = 5, jun = 6, jul = 7, aug = 8, sep = 9, oct = 10, nov = 11, dec = 12)[as.character(month)],
+    Datum = as.Date(paste(year, month_num, "01", sep = "-")),
     Monat_Jahr = format(Datum, "%b %y")
   )
 
@@ -98,7 +105,7 @@ levels_chronologisch <- Daten %>%
 Daten$Monat_Jahr <- factor(Daten$Monat_Jahr, levels = levels_chronologisch)
 
 ggplot(Daten, aes(x = Monat_Jahr, fill = y)) +
-  geom_bar(position = "fill") + 
+  geom_bar(position = "fill") +
   theme_minimal() +
   scale_y_continuous(labels = scales::percent) +
   scale_fill_manual(values = c("no" = "lightcoral", "yes" = "lightgreen")) +
@@ -110,10 +117,10 @@ ggplot(Daten, aes(x = Monat_Jahr, fill = y)) +
        fill = "Erfolgreich (y)")
 
 ggplot(Daten, aes(x = Monat_Jahr, fill = poutcome)) +
-  geom_bar(position = "fill") + 
+  geom_bar(position = "fill") +
   theme_minimal() +
   scale_y_continuous(labels = scales::percent) +
-  scale_fill_manual(values = c("failure" = "lightcoral", "other" = "lightblue", 
+  scale_fill_manual(values = c("failure" = "lightcoral", "other" = "lightblue",
                                "success" = "lightgreen", "unknown" = "lightgrey")) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
   labs(title = "Kundenstruktur (poutcome) im echten Zeitverlauf",
@@ -123,15 +130,12 @@ ggplot(Daten, aes(x = Monat_Jahr, fill = poutcome)) +
        fill = "Letztes Kampagnenergebnis")
 
 
-
-
 # ========================================================
-# BALANCE ANALYSE 
+# BALANCE ANALYSE
 # ========================================================
 
 # --- Linke Grafik ---
-library(ggplot2)
-library(dplyr)
+
 
 job_paradox <- Daten %>%
   group_by(job) %>%
@@ -140,12 +144,12 @@ job_paradox <- Daten %>%
 
 ggplot(job_paradox, aes(x = reorder(job, Median_Guthaben), y = Median_Guthaben, fill = Farbe)) +
   geom_col(width = 0.6, alpha = 0.9, show.legend = FALSE) +
-  
-  geom_text(aes(label = paste0(format(Median_Guthaben, big.mark = ".", decimal.mark = ","), " €")), 
+
+  geom_text(aes(label = paste0(format(Median_Guthaben, big.mark = ".", decimal.mark = ","), " €")),
             vjust = -0.6, fontface = "bold", size = 4, color = "black") +
-  
-  scale_fill_manual(values = c("normal" = "steelblue", "suspekt" = "steelblue")) + 
-  
+
+  scale_fill_manual(values = c("normal" = "steelblue", "suspekt" = "steelblue")) +
+
   theme_minimal(base_size = 14) +
   scale_y_continuous(limits = c(0, 950)) +
   labs(
@@ -156,15 +160,13 @@ ggplot(job_paradox, aes(x = reorder(job, Median_Guthaben), y = Median_Guthaben, 
   theme(
     plot.title = element_text(face = "bold", size = 16, margin = margin(b = 5)),
     plot.subtitle = element_text(color = "darkgray", margin = margin(b = 15)),
-    panel.grid.major.x = element_blank(), 
-    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold", color = "black") 
+    panel.grid.major.x = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold", color = "black")
   )
 
 
 # --- Rechte Grafik ---
 
-library(ggplot2)
-library(dplyr)
 
 grafik_aufteilung <- Daten %>%
   mutate(Kategorie = ifelse(balance >= 0, "Schnitt Guthaben (wenn im Plus)", "Schnitt Schulden (wenn im Minus)")) %>%
@@ -182,7 +184,7 @@ grafik_aufteilung$job <- factor(grafik_aufteilung$job, levels = ordnung_jobs)
 
 ggplot(grafik_aufteilung, aes(x = job, y = Betrag_Absolut, fill = Kategorie)) +
   geom_col(position = position_dodge(width = 0.75), width = 0.7, alpha = 0.9) +
-  geom_text(aes(label = paste0(round(Betrag_Absolut, 0), " €")), 
+  geom_text(aes(label = paste0(round(Betrag_Absolut, 0), " €")),
             position = position_dodge(width = 0.75), vjust = -0.5, fontface = "bold", size = 3.5, color = "black") +
   scale_fill_manual(values = c("Schnitt Schulden (wenn im Minus)" = "#C62828", "Schnitt Guthaben (wenn im Plus)" = "#2E7D32")) +
   theme_minimal(base_size = 14) +
@@ -202,61 +204,59 @@ ggplot(grafik_aufteilung, aes(x = job, y = Betrag_Absolut, fill = Kategorie)) +
   )
 
 
-
-
 # ========================================================
-# AGE ANALYSE 
+# AGE ANALYSE
 # ========================================================
 
 par(mfrow = c(1, 3))
 # Abschlussrate nach Altersgruppen
-Daten$altersgruppe <- cut(Daten$age, 
-                          breaks = c(0, 24, 34, 44, 54, 64, Inf), 
+Daten$altersgruppe <- cut(Daten$age,
+                          breaks = c(0, 24, 34, 44, 54, 64, Inf),
                           labels = c("<25", "25-34", "35-44", "45-54", "55-64", "65+"),
                           right = TRUE)
 
 # Relative Häufigkeiten für 'yes' pro Altersgruppe berechnen
 rate_table <- prop.table(table(Daten$y, Daten$altersgruppe), margin = 2)
-abschlussraten <- rate_table["yes", ] * 100
+abschlussraten <- rate_table["yes",] * 100
 
-bp <- barplot(abschlussraten, 
-              col = "lightgreen", 
+bp <- barplot(abschlussraten,
+              col = "lightgreen",
               ylim = c(0, 50),
               main = "Abschlussrate (y = yes) nach Altersgruppe",
               ylab = "Abschlussrate (in %)")
 
-text(x = bp, y = abschlussraten + 1.5, 
-     labels = sprintf("%.1f", abschlussraten), 
+text(x = bp, y = abschlussraten + 1.5,
+     labels = sprintf("%.1f", abschlussraten),
      cex = 1, font = 1)
 
 # --- Histrogramm ---
-hist(Daten$age, 
+hist(Daten$age,
      col = "#4682B4",
-     freq = FALSE, 
+     freq = FALSE,
      main = "Histogramm: Alter (age)",
-     xlab = "", 
+     xlab = "",
      ylab = "Dichte")
 
 # --- Boxplot ---
-boxplot(Daten$age, 
-        col = "#4682B4", 
+boxplot(Daten$age,
+        col = "#4682B4",
         main = "Boxplot: Alter (age)",
         ylab = "Alter")
 par(mfrow = c(1, 1))
 
 
 # ========================================================
-# PREVIOUS UND AGE ANALYSE 
+# PREVIOUS UND AGE ANALYSE
 # ========================================================
 
 # --- Rechte Grafik ---
-library(ggplot2)
+
 
 ggplot(Daten, aes(x = altersgruppe, fill = altersgruppe)) +
   geom_bar(color = "black") +
   theme_minimal() +
   # Eine ruhige Farbpalette, sieht sehr professionell aus
-  scale_fill_brewer(palette = "Blues") + 
+  scale_fill_brewer(palette = "Blues") +
   theme(axis.text.x = element_text(angle = 15, hjust = 1)) +
   labs(title = "Zielgruppen-Check: Wer wird eigentlich angerufen?",
        x = "Altersgruppe",
@@ -269,13 +269,12 @@ spearman_wert <- cor(Daten$age, Daten$previous, method = "spearman")
 cat(sprintf("Der globale Spearman-Wert beträgt: %.2f\n\n", spearman_wert))
 
 
-
 # --- Tabelle, Entdeckung ---
 tabelle_analyse <- Daten %>%
   mutate(
     altersgruppe_spezial = cut(
-      age, 
-      breaks = c(17, 30, 50, 70, Inf), 
+      age,
+      breaks = c(17, 30, 50, 70, Inf),
       labels = c("18 - 30", "31 - 50", "51 - 70", "71+")
     )
   ) %>%
@@ -287,7 +286,7 @@ print(tabelle_analyse)
 
 
 # ========================================================
-# POUTCOME UND AGE ANALYSE 
+# POUTCOME UND AGE ANALYSE
 # ========================================================
 
 # --- Rechte Tabelle ---
@@ -296,9 +295,9 @@ ggplot(Daten, aes(x = altersgruppe, fill = poutcome)) +
   scale_y_continuous(labels = scales::percent) +
   theme_minimal() +
   # Unsere bekannte Farbpalette von vorhin
-  scale_fill_manual(values = c("success" = "lightgreen", 
-                               "failure" = "lightcoral", 
-                               "unknown" = "gray85", 
+  scale_fill_manual(values = c("success" = "lightgreen",
+                               "failure" = "lightcoral",
+                               "unknown" = "gray85",
                                "other" = "lightblue")) +
   theme(axis.text.x = element_text(angle = 15, hjust = 1)) +
   labs(title = "Erfolg nach Altersgruppen",
@@ -308,13 +307,13 @@ ggplot(Daten, aes(x = altersgruppe, fill = poutcome)) +
 
 
 # --- Kreuztabelle ---
-library(dplyr)
+
 
 tabelle_alle_gruppen <- Daten %>%
   mutate(
     altersgruppe = cut(
-      age, 
-      breaks = c(17, 30, 50, 70, Inf), 
+      age,
+      breaks = c(17, 30, 50, 70, Inf),
       labels = c("18 - 30", "31 - 50", "51 - 70", "71+")
     ),
     Bereits_kontaktiert = ifelse(previous > 0, "ja", "nein")
@@ -330,26 +329,20 @@ tabelle_alle_gruppen <- Daten %>%
 print(tabelle_alle_gruppen)
 
 
-
 # ========================================================
-# AGE UND BALANCE ANALYSE 
+# AGE UND BALANCE ANALYSE
 # ========================================================
-
-
-library(ggplot2)
-library(dplyr)
-library(here)
 
 
 Daten_Analyse <- Daten %>%
   mutate(
     y_num = ifelse(y == "yes", 1, 0),
     altersgruppe = cut(
-      age, 
-      breaks = c(17, 30, 50, 70, Inf), 
-      labels = c("18-30 (Junge Erwachsene)", 
-                 "31-50 (Mittelalter)", 
-                 "51-70 (Ältere Erwachsene)", 
+      age,
+      breaks = c(17, 30, 50, 70, Inf),
+      labels = c("18-30 (Junge Erwachsene)",
+                 "31-50 (Mittelalter)",
+                 "51-70 (Ältere Erwachsene)",
                  "71+ (Senioren)")
     )
   )
@@ -361,14 +354,14 @@ highlights_schulden <- Daten_Analyse %>%
 
 ggplot(highlights_schulden, aes(x = altersgruppe, y = Median_Guthaben, fill = altersgruppe)) +
   geom_col(width = 0.6, alpha = 0.9, show.legend = FALSE) +
-  
-  geom_text(aes(label = paste0(format(Median_Guthaben, big.mark = ".", decimal.mark = ","), " €")), 
+
+  geom_text(aes(label = paste0(format(Median_Guthaben, big.mark = ".", decimal.mark = ","), " €")),
             vjust = -0.6, fontface = "bold", size = 5, color = "black") +
-  
-  scale_fill_manual(values = c("18-30 (Junge Erwachsene)" = "#B0BEC5", 
-                               "31-50 (Mittelalter)" = "#B0BEC5", 
-                               "51-70 (Ältere Erwachsene)" = "#B0BEC5", 
-                               "71+ (Senioren)" = "#2E7D32")) + 
+
+  scale_fill_manual(values = c("18-30 (Junge Erwachsene)" = "#B0BEC5",
+                               "31-50 (Mittelalter)" = "#B0BEC5",
+                               "51-70 (Ältere Erwachsene)" = "#B0BEC5",
+                               "71+ (Senioren)" = "#2E7D32")) +
   theme_minimal(base_size = 14) +
   scale_y_continuous(limits = c(0, 1600)) +
   labs(
@@ -378,7 +371,7 @@ ggplot(highlights_schulden, aes(x = altersgruppe, y = Median_Guthaben, fill = al
   ) +
   theme(
     plot.title = element_text(face = "bold", size = 16, margin = margin(b = 5)),
-    panel.grid.major.x = element_blank(), 
+    panel.grid.major.x = element_blank(),
     axis.text.x = element_text(face = "bold", color = "black")
   )
 
@@ -398,19 +391,13 @@ cat(sprintf("Ergebnis:\n"))
 cat(sprintf("Pro 1.000€ mehr Guthaben steigt die Abschlusschance isoliert betrachtet um: %.2f%%\n", prozent_effekt))
 
 
-
-
 # ========================================================
-# CAMPAIN ANALYSE 
+# CAMPAIN ANALYSE
 # ========================================================
 
-library(dplyr)
-library(ggplot2)
-library(scales)
-library(patchwork)
 
-if(!"year" %in% names(Daten)) {
-  month_lookup <- c(jan=1, feb=2, mar=3, apr=4, may=5, jun=6, jul=7, aug=8, sep=9, oct=10, nov=11, dec=12)
+if (!"year" %in% names(Daten)) {
+  month_lookup <- c(jan = 1, feb = 2, mar = 3, apr = 4, may = 5, jun = 6, jul = 7, aug = 8, sep = 9, oct = 10, nov = 11, dec = 12)
   month_nums <- month_lookup[as.character(Daten$month)]
   year_diffs <- c(0, diff(month_nums) < 0)
   Daten$year <- 2008 + cumsum(year_diffs)
@@ -420,13 +407,13 @@ zeit_daten <- Daten %>%
   group_by(year, month) %>%
   summarise(
     Anzahl_Kontakte = n(),
-    Abschluesse     = sum(y == "yes"),
-    Abschlussquote  = (Abschluesse / Anzahl_Kontakte) * 100,
+    Abschluesse = sum(y == "yes"),
+    Abschlussquote = (Abschluesse / Anzahl_Kontakte) * 100,
     .groups = "drop"
   ) %>%
   mutate(
-    month_num = c(jan=1, feb=2, mar=3, apr=4, may=5, jun=6, jul=7, aug=8, sep=9, oct=10, nov=11, dec=12)[as.character(month)],
-    Datum     = as.Date(paste(year, month_num, "01", sep = "-"))
+    month_num = c(jan = 1, feb = 2, mar = 3, apr = 4, may = 5, jun = 6, jul = 7, aug = 8, sep = 9, oct = 10, nov = 11, dec = 12)[as.character(month)],
+    Datum = as.Date(paste(year, month_num, "01", sep = "-"))
   ) %>%
   arrange(Datum)
 
@@ -434,14 +421,14 @@ zeit_daten <- Daten %>%
 p1 <- ggplot(zeit_daten, aes(x = Datum)) +
   geom_line(aes(y = Anzahl_Kontakte, color = "Gesamtzahl Anrufe"), size = 1.2) +
   geom_point(aes(y = Anzahl_Kontakte, color = "Gesamtzahl Anrufe"), size = 2.5) +
-  geom_text(aes(y = Anzahl_Kontakte, label = Anzahl_Kontakte), 
+  geom_text(aes(y = Anzahl_Kontakte, label = Anzahl_Kontakte),
             vjust = 1.8, size = 3, color = "firebrick", fontface = "plain") +
-  
+
   geom_line(aes(y = Abschluesse, color = "Erfolgreiche Abschlüsse"), size = 1.2) +
   geom_point(aes(y = Abschluesse, color = "Erfolgreiche Abschlüsse"), size = 2.5) +
-  geom_text(aes(y = Abschluesse, label = Abschluesse), 
+  geom_text(aes(y = Abschluesse, label = Abschluesse),
             vjust = -1.2, size = 3, color = "dodgerblue3", fontface = "plain") +
-  
+
   scale_color_manual(values = c("Erfolgreiche Abschlüsse" = "dodgerblue3", "Gesamtzahl Anrufe" = "firebrick")) +
   scale_x_date(date_labels = "%b %y", date_breaks = "2 months", expand = expansion(mult = c(0.03, 0.03))) +
   scale_y_continuous(labels = comma, limits = c(0, 8500)) +
@@ -467,9 +454,9 @@ p2 <- ggplot(zeit_daten, aes(x = Datum, y = Abschlussquote)) +
   # Grüne Linie + Punkte + Prozentlabels
   geom_line(color = "forestgreen", size = 1.2) +
   geom_point(color = "forestgreen", size = 2.5) +
-  geom_text(aes(label = sprintf("%.1f%%", Abschlussquote)), 
+  geom_text(aes(label = sprintf("%.1f%%", Abschlussquote)),
             vjust = -1.0, size = 3, color = "forestgreen", fontface = "plain") +
-  
+
   scale_x_date(date_labels = "%b %y", date_breaks = "2 months", expand = expansion(mult = c(0.03, 0.03))) +
   scale_y_continuous(labels = function(x) paste0(x, "%"), limits = c(0, 70)) +
   theme_minimal(base_size = 12) +
@@ -481,7 +468,7 @@ p2 <- ggplot(zeit_daten, aes(x = Datum, y = Abschlussquote)) +
   theme(
     plot.title = element_text(size = 12, color = "dimgray", face = "plain"),
     panel.grid.minor = element_blank(),
-    axis.text.x = element_text(angle = 45, hjust = 1, color = "black") 
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black")
   )
 
 print(p1)
@@ -493,13 +480,10 @@ pearson_kampagne <- cor(Daten$campaign, y_numerisch, method = "pearson")
 cat(sprintf("Pearson-Korrelationskoeffizient: %.2f\n", pearson_kampagne))
 
 
-
-
 # ==============================================================================
 # DAY ANALYSE
 # ==============================================================================
-library(ggplot2)
-library(dplyr)
+
 
 day_story <- Daten %>%
   mutate(y_num = ifelse(y == "yes", 1, 0)) %>% # Stellt sicher, dass y_num existiert
@@ -512,23 +496,23 @@ day_story <- Daten %>%
 
 ggplot(day_story, aes(x = day)) +
   geom_col(aes(y = Anrufe), fill = "steelblue", alpha = 0.7, width = 0.8) +
-  
-  geom_line(aes(y = Quote * 80), color = "#C62828", linewidth = 1.2) + 
+
+  geom_line(aes(y = Quote * 80), color = "#C62828", linewidth = 1.2) +
   geom_point(aes(y = Quote * 80), color = "#C62828", size = 2) +
-  
+
   scale_y_continuous(
     name = NULL,
-    sec.axis = sec_axis(~./80, name = NULL)
+    sec.axis = sec_axis(~. / 80, name = NULL)
   ) +
-  
+
   scale_x_continuous(breaks = 1:31) +
-  
+
   theme_minimal(base_size = 14) +
   labs(
     title = "Kontakte und Erfolg",
     x = "Kalendertag"
   ) +
-  
+
   theme(
     plot.title = element_text(face = "bold", size = 16, margin = margin(b = 10)),
     panel.grid.minor = element_blank(),
@@ -538,15 +522,12 @@ ggplot(day_story, aes(x = day)) +
   )
 
 
-
-
-
 # ==============================================================================
 # MARITAL ANALYSE
 # ==============================================================================
 
 # --- Linke Grafik ---
-library(ggplot2)
+
 plot_links_marital <- ggplot(Daten, aes(x = marital)) +
   geom_bar(fill = "#4682B4", color = "black", width = 0.6) + # Schönes Stahlblau mit schwarzem Rand
   theme_classic() +
@@ -564,7 +545,7 @@ print(plot_links_marital)
 
 
 # --- Rechte Grafik ---
-library(dplyr)
+
 
 marital_y_probs <- Daten %>%
   group_by(marital, y) %>%
@@ -576,15 +557,15 @@ gesamt_n <- nrow(Daten)
 
 plot_rechts_marital <- ggplot(marital_y_probs, aes(x = marital, y = Prozent, fill = y)) +
   geom_bar(stat = "identity", position = position_dodge(width = 0.7), color = "black", width = 0.6) +
-  
-  geom_text(aes(label = sprintf("%.1f", Prozent)), 
-            position = position_dodge(width = 0.7), 
+
+  geom_text(aes(label = sprintf("%.1f", Prozent)),
+            position = position_dodge(width = 0.7),
             vjust = -0.5, size = 3.5, fontface = "plain") +
-  
+
   theme_classic() +
   scale_fill_manual(
     values = c("no" = "lightcoral", "yes" = "lightgreen"),
-    labels = c(paste0("Abschluss (y): no (Gesamt n=", gesamt_n, ")"), 
+    labels = c(paste0("Abschluss (y): no (Gesamt n=", gesamt_n, ")"),
                paste0("Abschluss (y): yes (Gesamt n=", gesamt_n, ")"))
   ) +
   labs(
@@ -596,7 +577,7 @@ plot_rechts_marital <- ggplot(marital_y_probs, aes(x = marital, y = Prozent, fil
   ylim(0, 105) + # Platz nach oben für die Textlabels
   theme(
     plot.title = element_text(face = "bold", hjust = 0.5),
-    legend.position = "top", 
+    legend.position = "top",
     legend.text = element_text(size = 9)
   )
 
